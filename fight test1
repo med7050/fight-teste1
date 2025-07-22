@@ -1,0 +1,106 @@
+const int pwmPin = 18;
+const int pwmChannel = 0;
+const int freq = 16000;
+const int resolution = 8;
+
+void setup() {
+  Serial.begin(115200);
+  ledcSetup(pwmChannel, freq, resolution);
+  ledcAttachPin(pwmPin, pwmChannel);
+  Serial.println("أدخل سرعة بين 0 و255:");
+}
+
+void loop() {
+  if (Serial.available()) {
+    int speed = Serial.parseInt();
+    if (speed >= 0 && speed <= 255) {
+      ledcWrite(pwmChannel, speed);
+      Serial.print("سرعة مضبوطة على: ");
+      Serial.println(speed);
+    } else {
+      Serial.println("الرجاء إدخال رقم بين 0 و255 فقط");
+    }
+  }
+}
+
+/////// new code of ZS-X11h
+
+
+#include <Ps3Controller.h>
+
+// Motor pin definitions (change as needed)
+struct Motor {
+  int pwmPin;
+  int dirPin;
+  int stopPin;
+};
+
+// Define 4 motors
+Motor motors[4] = {
+  {13, 12, 14},  // Front Left
+  {25, 26, 27},  // Front Right
+  {32, 33, 15},  // Rear Left
+  {16, 17, 4}    // Rear Right
+};
+
+// Speed multiplier
+int maxSpeed = 255;
+
+// Called when PS3 controller connects
+void onConnect() {
+  Serial.println("PS3 Controller Connected!");
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize motor pins
+  for (int i = 0; i < 4; i++) {
+    pinMode(motors[i].pwmPin, OUTPUT);
+    pinMode(motors[i].dirPin, OUTPUT);
+    pinMode(motors[i].stopPin, OUTPUT);
+    digitalWrite(motors[i].stopPin, LOW); // enable driver
+  }
+
+  // Initialize PS3
+  Ps3.begin("01:02:03:04:05:06");  // Use your ESP32's MAC address
+  Ps3.attach(onConnect);
+}
+
+// Simple motor control
+void driveMotor(Motor motor, int speed) {
+  speed = constrain(speed, -maxSpeed, maxSpeed);
+
+  if (speed > 0) {
+    digitalWrite(motor.dirPin, HIGH);
+    analogWrite(motor.pwmPin, speed);
+  } else if (speed < 0) {
+    digitalWrite(motor.dirPin, LOW);
+    analogWrite(motor.pwmPin, -speed);
+  } else {
+    analogWrite(motor.pwmPin, 0);
+  }
+}
+
+void loop() {
+  if (!Ps3.isConnected()) return;
+
+  int y = Ps3.data.analog.stick.ly;  // Forward/backward
+  int x = Ps3.data.analog.stick.lx;  // Left/right
+
+  // Scale from -128 to 127
+  int forward = map(y, 0, 255, 255, -255);
+  int turn = map(x, 0, 255, -255, 255);
+
+  // Differential drive
+  int leftSpeed = forward + turn;
+  int rightSpeed = forward - turn;
+
+  // Assign speeds to motors
+  driveMotor(motors[0], leftSpeed);   // Front Left
+  driveMotor(motors[2], leftSpeed);   // Rear Left
+  driveMotor(motors[1], rightSpeed);  // Front Right
+  driveMotor(motors[3], rightSpeed);  // Rear Right
+
+  delay(20);
+}
